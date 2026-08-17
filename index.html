@@ -12,6 +12,8 @@
         .btn:hover { background: #2980b9; }
         .btn-danger { background: #e74c3c; }
         .btn-danger:hover { background: #c0392b; }
+        .btn-success { background: #2ecc71; }
+        .btn-success:hover { background: #27ae60; }
         .screen { display: none; }
         .active { display: block; }
         #click-target { width: 150px; height: 150px; background: #e74c3c; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; margin: 30px auto; cursor: pointer; user-select: none; box-shadow: 0 6px 0 #c0392b; transition: 0.05s; }
@@ -28,32 +30,32 @@
     <!-- ホーム画面 -->
     <div id="home-screen" class="screen active">
         <h1>🔥 オンラインクリックゲーム 🔥</h1>
-        <div class="user-tag" id="display-username">あなたの名前: 読み込み中...</div>
+        <div class="user-tag" id="display-username">名前: 読み込み中...</div>
         <br>
-        <button class="btn" onclick="showScreen('single-menu-screen')">一人でプレイ</button>
+        <button class="btn" onclick="showScreen('single-menu-screen')">一人でプレイ (VS CPU)</button>
         <button class="btn" onclick="startMultiMatch()">二人でプレイ (オンライン)</button>
         
-        <h3>🏆 ホームランキング (endpoint)</h3>
+        <h3>🏆 ホームランキング</h3>
         <table id="ranking-table">
-            <tr><th>日時</th><th>P1</th><th>P2</th><th>勝者</th></tr>
+            <tr><th>日時</th><th>P1 (Pt)</th><th>P2 (Pt)</th><th>勝者</th></tr>
         </table>
     </div>
 
     <!-- 一人プレイ難易度選択画面 -->
     <div id="single-menu-screen" class="screen">
-        <h2>一人プレイ：難易度選択</h2>
-        <button class="btn" onclick="startSingleGame('easy')">簡単 (1pt/回)</button>
-        <button class="btn" onclick="startSingleGame('normal')">ちょい難</button>
-        <button class="btn" onclick="startSingleGame('hard')">難しい</button>
-        <button class="btn btn-danger" onclick="startSingleGame('death')">死 (秒間20回連打！)</button>
+        <h2>一人プレイ：難易度選択 (VS CPU)</h2>
+        <button class="btn" onclick="startSingleGame('easy')">簡単 (CPU: 秒間5回)</button>
+        <button class="btn" onclick="startSingleGame('normal')">ちょい難 (CPU: 秒間7回)</button>
+        <button class="btn" onclick="startSingleGame('hard')">難しい (CPU: 秒間14回)</button>
+        <button class="btn btn-danger" onclick="startSingleGame('death')">死 (CPU: 秒間20回)</button>
         <br><br>
         <button class="btn" style="background:#95a5a6;" onclick="showScreen('home-screen')">戻る</button>
     </div>
 
     <!-- マッチング待機画面 -->
     <div id="matching-screen" class="screen">
-        <h2>対戦相手を探しています...</h2>
-        <div class="timer" id="matching-status">online テーブルに接続中...</div>
+        <h2>オンラインマッチング中...</h2>
+        <div class="timer" id="matching-status">ランダムなプレイヤーを探しています...</div>
         <br>
         <button class="btn btn-danger" onclick="cancelMatch()">キャンセル</button>
     </div>
@@ -62,7 +64,8 @@
     <div id="game-screen" class="screen">
         <h2 id="game-title">ゲーム中</h2>
         <div class="timer">残り時間: <span id="time-left">10.0</span> 秒</div>
-        <div class="score">ポイント: <span id="current-score">0</span></div>
+        <div class="score">あなた: <span id="current-score">0</span> pt</div>
+        <div id="cpu-score-area" style="display:none;" class="score">CPU: <span id="current-cpu-score">0</span> pt</div>
         <div id="click-target" onclick="handleClick()">CLICK!</div>
     </div>
 
@@ -70,7 +73,9 @@
     <div id="result-screen" class="screen">
         <h2>結果発表</h2>
         <p id="result-text" style="font-size: 18px; font-weight: bold;"></p>
-        <button class="btn" onclick="showScreen('home-screen'); loadRanking();">ホームに戻る</button>
+        <br>
+        <button class="btn btn-success" onclick="retryGame()">もう一度やる</button>
+        <button class="btn" style="background:#95a5a6;" onclick="showScreen('home-screen'); loadRanking();">ホームに戻る</button>
     </div>
 </div>
 
@@ -78,20 +83,20 @@
     // ★ バックエンド（Flask）のURLを指定
     const API_BASE = "http://127.0.0.1:5000";
 
-    // ランダムなプレイヤー名を自動生成（Player_xxxx形式）
     function generateRandomName() {
         return "Player_" + Math.floor(Math.random() * 9000 + 1000);
     }
 
     let playerName = generateRandomName();
-    document.getElementById('display-username').textContent = `あなたの名前: ${playerName}`;
+    document.getElementById('display-username').textContent = `名前: ${playerName}`;
 
     let gameMode = ""; 
     let difficulty = "";
     let score = 0;
+    let cpuScore = 0;
     let timeLeft = 10.0;
     let timerInterval = null;
-    let deathInterval = null;
+    let cpuInterval = null;
     let matchingInterval = null;
     let opponentName = "";
 
@@ -119,24 +124,32 @@
     }
     loadRanking();
 
-    // --- 一人プレイ開始 ---
+    // サイトを離れた（タブを閉じたりリロードした）時に online テーブルから自分を削除
+    window.addEventListener('beforeunload', () => {
+        navigator.sendBeacon(`${API_BASE}/api/match/cancel`, JSON.stringify({username: playerName}));
+    });
+
+    // --- 一人プレイ (VS CPU) 開始 ---
     function startSingleGame(diff) {
         difficulty = diff;
         gameMode = 'single';
         score = 0;
+        cpuScore = 0;
         timeLeft = 10.0;
         document.getElementById('current-score').textContent = score;
-        document.getElementById('time-left').textContent = timeLeft.toFixed(1);
-        document.getElementById('game-title').textContent = `一人プレイ (${diff.toUpperCase()})`;
+        document.getElementById('current-cpu-score').textContent = cpuScore;
+        document.getElementById('cpu-score-area').style.display = 'block';
+        document.getElementById('game-title').textContent = `一人プレイ (VS CPU: ${diff.toUpperCase()})`;
         showScreen('game-screen');
 
-        // 「死」モード：1秒間に20回（0.05秒ごとに+1）
-        if (difficulty === 'death') {
-            deathInterval = setInterval(() => {
-                score += 1;
-                document.getElementById('current-score').textContent = score;
-            }, 50);
-        }
+        // 難易度ごとのCPUのクリック頻度 (簡単:秒間5回, ちょい難:7回, 難しい:14回, 死:20回)
+        let cpuSpeedMap = { 'easy': 200, 'normal': 143, 'hard': 71, 'death': 50 };
+        let cpuIntervalTime = cpuSpeedMap[diff] || 200;
+
+        cpuInterval = setInterval(() => {
+            cpuScore += 1;
+            document.getElementById('current-cpu-score').textContent = cpuScore;
+        }, cpuIntervalTime);
 
         timerInterval = setInterval(() => {
             timeLeft -= 0.1;
@@ -150,7 +163,7 @@
     // --- 二人プレイ：マッチング開始 ---
     function startMultiMatch() {
         showScreen('matching-screen');
-        document.getElementById('matching-status').textContent = `${playerName} でマッチング待機中...`;
+        document.getElementById('matching-status').textContent = `${playerName} でオンライン行に登録中...`;
 
         matchingInterval = setInterval(() => {
             fetch(`${API_BASE}/api/match/join`, {
@@ -185,7 +198,7 @@
         score = 0;
         timeLeft = 10.0;
         document.getElementById('current-score').textContent = score;
-        document.getElementById('time-left').textContent = timeLeft.toFixed(1);
+        document.getElementById('cpu-score-area').style.display = 'none'; // オンラインではCPU非表示
         document.getElementById('game-title').textContent = `対戦: VS ${opponentName}`;
         showScreen('game-screen');
 
@@ -200,26 +213,28 @@
 
     // --- クリック処理 ---
     function handleClick() {
-        if (difficulty === 'death') return; // 死モードはオート加算
         score += 1;
         document.getElementById('current-score').textContent = score;
     }
 
-    // --- ゲーム終了処理 ---
+    // --- ゲーム終了処理 (0秒になったら結果) ---
     function endGame() {
         clearInterval(timerInterval);
-        if (deathInterval) clearInterval(deathInterval);
+        if (cpuInterval) clearInterval(cpuInterval);
 
         if (gameMode === 'single') {
+            // 一人プレイの結果保存
             fetch(`${API_BASE}/api/single_result`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({username: playerName, points: score})
             }).then(() => {
-                document.getElementById('result-text').textContent = `ゲーム終了！ スコア: ${score} ポイント`;
+                let winLoseText = score > cpuScore ? "あなたの勝利！" : (score < cpuScore ? "CPUの勝利..." : "引き分け！");
+                document.getElementById('result-text').textContent = `${winLoseText} (あなた: ${score}pt vs CPU: ${cpuScore}pt)`;
                 showScreen('result-screen');
             });
         } else if (gameMode === 'multi') {
+            // オンライン対戦の結果送信 (勝者+5pt, 敗者+3pt ルールをサーバー側で適用)
             fetch(`${API_BASE}/api/match/result`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -227,7 +242,7 @@
                     player1_name: playerName,
                     player1_points: score,
                     player2_name: opponentName,
-                    player2_points: 0 
+                    player2_points: 0 // ※本格的なリアルタイム同期はWebSocketが必要ですが、今回は10秒間連打した結果の片側送信または簡易比較
                 })
             })
             .then(res => res.json())
@@ -237,7 +252,16 @@
             });
         }
     }
+
+    // --- もう一度やるボタンの処理 ---
+    function retryGame() {
+        if (gameMode === 'single') {
+            startSingleGame(difficulty);
+        } else {
+            startMultiMatch();
+        }
+    }
 </script>
 
 </body>
-  </html>
+</html>
