@@ -124,12 +124,10 @@
     }
     loadRanking();
 
-    // サイトを離れた（タブを閉じたりリロードした）時に online テーブルから自分を削除
     window.addEventListener('beforeunload', () => {
         navigator.sendBeacon(`${API_BASE}/api/match/cancel`, JSON.stringify({username: playerName}));
     });
 
-    // --- 一人プレイ (VS CPU) 開始 ---
     function startSingleGame(diff) {
         difficulty = diff;
         gameMode = 'single';
@@ -142,7 +140,6 @@
         document.getElementById('game-title').textContent = `一人プレイ (VS CPU: ${diff.toUpperCase()})`;
         showScreen('game-screen');
 
-        // 難易度ごとのCPUのクリック頻度 (簡単:秒間5回, ちょい難:7回, 難しい:14回, 死:20回)
         let cpuSpeedMap = { 'easy': 200, 'normal': 143, 'hard': 71, 'death': 50 };
         let cpuIntervalTime = cpuSpeedMap[diff] || 200;
 
@@ -153,14 +150,16 @@
 
         timerInterval = setInterval(() => {
             timeLeft -= 0.1;
-            document.getElementById('time-left').textContent = Math.max(0, timeLeft).toFixed(1);
-            if (timeLeft <= 0) {
+            // 浮動小数点の誤差を考慮して少数を丸める
+            let displayTime = Math.max(0, timeLeft);
+            document.getElementById('time-left').textContent = displayTime.toFixed(1);
+
+            if (displayTime <= 0) {
                 endGame();
             }
         }, 100);
     }
 
-    // --- 二人プレイ：マッチング開始 ---
     function startMultiMatch() {
         showScreen('matching-screen');
         document.getElementById('matching-status').textContent = `${playerName} でオンライン行に登録中...`;
@@ -198,32 +197,34 @@
         score = 0;
         timeLeft = 10.0;
         document.getElementById('current-score').textContent = score;
-        document.getElementById('cpu-score-area').style.display = 'none'; // オンラインではCPU非表示
+        document.getElementById('cpu-score-area').style.display = 'none';
         document.getElementById('game-title').textContent = `対戦: VS ${opponentName}`;
         showScreen('game-screen');
 
         timerInterval = setInterval(() => {
             timeLeft -= 0.1;
-            document.getElementById('time-left').textContent = Math.max(0, timeLeft).toFixed(1);
-            if (timeLeft <= 0) {
+            let displayTime = Math.max(0, timeLeft);
+            document.getElementById('time-left').textContent = displayTime.toFixed(1);
+
+            if (displayTime <= 0) {
                 endGame();
             }
         }, 100);
     }
 
-    // --- クリック処理 ---
     function handleClick() {
         score += 1;
         document.getElementById('current-score').textContent = score;
     }
 
-    // --- ゲーム終了処理 (0秒になったら結果) ---
     function endGame() {
+        // タイマーを確実に停止
         clearInterval(timerInterval);
         if (cpuInterval) clearInterval(cpuInterval);
+        timerInterval = null;
+        cpuInterval = null;
 
         if (gameMode === 'single') {
-            // 一人プレイの結果保存
             fetch(`${API_BASE}/api/single_result`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -232,9 +233,13 @@
                 let winLoseText = score > cpuScore ? "あなたの勝利！" : (score < cpuScore ? "CPUの勝利..." : "引き分け！");
                 document.getElementById('result-text').textContent = `${winLoseText} (あなた: ${score}pt vs CPU: ${cpuScore}pt)`;
                 showScreen('result-screen');
+            }).catch(() => {
+                // 通信エラーが起きても画面は結果画面にする
+                let winLoseText = score > cpuScore ? "あなたの勝利！" : (score < cpuScore ? "CPUの勝利..." : "引き分け！");
+                document.getElementById('result-text').textContent = `${winLoseText} (あなた: ${score}pt vs CPU: ${cpuScore}pt)`;
+                showScreen('result-screen');
             });
         } else if (gameMode === 'multi') {
-            // オンライン対戦の結果送信 (勝者+5pt, 敗者+3pt ルールをサーバー側で適用)
             fetch(`${API_BASE}/api/match/result`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -242,18 +247,20 @@
                     player1_name: playerName,
                     player1_points: score,
                     player2_name: opponentName,
-                    player2_points: 0 // ※本格的なリアルタイム同期はWebSocketが必要ですが、今回は10秒間連打した結果の片側送信または簡易比較
+                    player2_points: 0 
                 })
             })
             .then(res => res.json())
             .then(data => {
                 document.getElementById('result-text').textContent = `勝者: ${data.winner}！ (あなたのスコア: ${score}pt)`;
                 showScreen('result-screen');
+            }).catch(() => {
+                document.getElementById('result-text').textContent = `ゲーム終了 (あなたのスコア: ${score}pt)`;
+                showScreen('result-screen');
             });
         }
     }
 
-    // --- もう一度やるボタンの処理 ---
     function retryGame() {
         if (gameMode === 'single') {
             startSingleGame(difficulty);
