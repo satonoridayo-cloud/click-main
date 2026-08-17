@@ -81,7 +81,7 @@
 
 <script>
     // ★ バックエンド（Flask）のURLを指定
-    const API_BASE = "http://127.0.0.1:5000";
+    const API_BASE = "https://online-click-nori-pixl.onrender.com";
 
     function generateRandomName() {
         return "Player_" + Math.floor(Math.random() * 9000 + 1000);
@@ -150,7 +150,6 @@
 
         timerInterval = setInterval(() => {
             timeLeft -= 0.1;
-            // 浮動小数点の誤差を考慮して少数を丸める
             let displayTime = Math.max(0, timeLeft);
             document.getElementById('time-left').textContent = displayTime.toFixed(1);
 
@@ -218,28 +217,29 @@
     }
 
     function endGame() {
-        // タイマーを確実に停止
+        // 1. まず確実にタイマーを停止する
         clearInterval(timerInterval);
         if (cpuInterval) clearInterval(cpuInterval);
         timerInterval = null;
         cpuInterval = null;
 
+        // 2. ネットワーク通信を待たずに、即座に結果画面を表示してテキストを設定する
         if (gameMode === 'single') {
+            let winLoseText = score > cpuScore ? "あなたの勝利！" : (score < cpuScore ? "CPUの勝利..." : "引き分け！");
+            document.getElementById('result-text').textContent = `${winLoseText} (あなた: ${score}pt vs CPU: ${cpuScore}pt)`;
+            showScreen('result-screen');
+
+            // 3. サーバーへのデータ保存は裏側（バックグラウンド）でこっそり行う
             fetch(`${API_BASE}/api/single_result`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({username: playerName, points: score})
-            }).then(() => {
-                let winLoseText = score > cpuScore ? "あなたの勝利！" : (score < cpuScore ? "CPUの勝利..." : "引き分け！");
-                document.getElementById('result-text').textContent = `${winLoseText} (あなた: ${score}pt vs CPU: ${cpuScore}pt)`;
-                showScreen('result-screen');
-            }).catch(() => {
-                // 通信エラーが起きても画面は結果画面にする
-                let winLoseText = score > cpuScore ? "あなたの勝利！" : (score < cpuScore ? "CPUの勝利..." : "引き分け！");
-                document.getElementById('result-text').textContent = `${winLoseText} (あなた: ${score}pt vs CPU: ${cpuScore}pt)`;
-                showScreen('result-screen');
-            });
+            }).catch(err => console.error("結果保存エラー:", err));
+
         } else if (gameMode === 'multi') {
+            document.getElementById('result-text').textContent = `ゲーム終了！ (あなたのスコア: ${score}pt)`;
+            showScreen('result-screen');
+
             fetch(`${API_BASE}/api/match/result`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -253,11 +253,7 @@
             .then(res => res.json())
             .then(data => {
                 document.getElementById('result-text').textContent = `勝者: ${data.winner}！ (あなたのスコア: ${score}pt)`;
-                showScreen('result-screen');
-            }).catch(() => {
-                document.getElementById('result-text').textContent = `ゲーム終了 (あなたのスコア: ${score}pt)`;
-                showScreen('result-screen');
-            });
+            }).catch(err => console.error("対戦結果送信エラー:", err));
         }
     }
 
