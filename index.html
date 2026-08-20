@@ -136,6 +136,7 @@
     const API_BASE = "https://click-server-xnnb.onrender.com";
 
     const NAME_STORAGE_KEY = 'clickgame_playerName';
+    const POINTS_STORAGE_KEY = 'clickgame_totalPoints';
 
     function generateRandomName() {
         return "Player_" + Math.floor(Math.random() * 9000 + 1000);
@@ -159,9 +160,28 @@
         }
     }
 
+    function loadStoredPoints() {
+        try {
+            const stored = localStorage.getItem(POINTS_STORAGE_KEY);
+            const parsed = parseInt(stored, 10);
+            if (!isNaN(parsed)) return parsed;
+        } catch (e) {
+            console.warn("localStorageが利用できません:", e);
+        }
+        return 0;
+    }
+
+    function savePointsToStorage(points) {
+        try {
+            localStorage.setItem(POINTS_STORAGE_KEY, String(points));
+        } catch (e) {
+            console.warn("localStorageへの保存に失敗しました:", e);
+        }
+    }
+
     let playerName = loadStoredName();
     saveNameToStorage(playerName); // 初回生成した名前も次回のために保存しておく
-    let totalPoints = 0;
+    let totalPoints = loadStoredPoints();
 
     document.getElementById('display-username').textContent = `名前: ${playerName}`;
     document.getElementById('total-points').textContent = totalPoints;
@@ -197,6 +217,7 @@
     function addPoints(amount) {
         totalPoints += amount;
         document.getElementById('total-points').textContent = totalPoints;
+        savePointsToStorage(totalPoints);
     }
 
     // ============================================================
@@ -476,7 +497,7 @@
                 data.error ? `エラー: ${data.error}` : `結果の取得に失敗しました。`;
         }
     }
-
+ 
     function goHomeFromResult() {
         stopAllIntervals();
         currentSessionId = null;
@@ -484,7 +505,7 @@
         showScreen('home-screen');
         loadRanking();
     }
-
+ 
     function retryGame() {
         stopAllIntervals();
         multiPointsAdded = false;
@@ -495,6 +516,6 @@
         }
     }
 </script>
-
+ 
 </body>
 </html>
