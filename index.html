@@ -196,9 +196,7 @@
     let matchingInterval = null;
     let resultPollInterval = null;
     let opponentName = "";
-    let currentSessionId = null;
-
-    // ============================================================
+    let currentSessionId = null;    // ============================================================
     // 名前変更
     // ============================================================
     function changeName() {
@@ -443,6 +441,12 @@
             return;
         }
 
+        // 前回のfetchがまだ終わっていない場合は多重送信しない
+        // (通信が遅い時に複数のリクエストが同時に飛んで、
+        //  順序が入れ替わって届くのを防ぐ)
+        if (resultRequestInFlight) return;
+        resultRequestInFlight = true;
+
         fetch(`${API_BASE}/api/match/result`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -453,17 +457,32 @@
             })
         })
         .then(res => res.json())
-        .then(data => handleMultiResultResponse(data))
+        .then(data => {
+            resultRequestInFlight = false;
+            handleMultiResultResponse(data);
+        })
         .catch(err => {
+            resultRequestInFlight = false;
             console.error("対戦結果送信エラー:", err);
-            document.getElementById('result-text').textContent = `結果送信に失敗しました。`;
-            document.getElementById('retry-btn').disabled = false;
+            if (!multiResultFinalized) {
+                document.getElementById('result-text').textContent = `結果送信に失敗しました。`;
+                document.getElementById('retry-btn').disabled = false;
+            }
         });
     }
 
     let multiPointsAdded = false;
+    // 通信の時間差(遅延・順序逆転)で古いレスポンスが後から届いても
+    // 確定済みの結果表示を上書きしないようにするためのフラグ
+    let multiResultFinalized = false;
+    // 前回のfetchが終わる前に次のポーリングが多重発火しないようにするガード
+    let resultRequestInFlight = false;
 
     function handleMultiResultResponse(data) {
+        // すでに確定済みの結果を表示している場合、通信の時間差で
+        // 後から届いた古いレスポンス(waiting_for_opponent等)は無視する
+        if (multiResultFinalized) return;
+
         if (data.status === 'waiting_for_opponent') {
             document.getElementById('result-text').textContent = `あなたのスコア: ${score}pt`;
             document.getElementById('result-waiting-note').style.display = 'block';
@@ -477,18 +496,22 @@
             return;
         }
 
+        // ここに来るのは finished / opponent_declined / エラー等、
+        // 「これ以上ポーリングする必要がない」結果なので確定フラグを立てる
+        multiResultFinalized = true;
+ 
         clearInterval(resultPollInterval);
         resultPollInterval = null;
         document.getElementById('result-waiting-note').style.display = 'none';
         document.getElementById('retry-btn').disabled = false;
-
+ 
         if (data.status === 'opponent_declined') {
             // 相手が対戦確認画面で「やめる」を押した場合
             document.getElementById('result-text').textContent =
                 `${data.opponent || opponentName} が対戦をキャンセルしました。`;
             return;
         }
-
+ 
         if (data.status === 'finished') {
             let youWon = data.winner === playerName;
             let isDraw = data.winner === "引き分け";
@@ -514,6 +537,8 @@
         stopAllIntervals();
         currentSessionId = null;
         multiPointsAdded = false;
+        multiResultFinalized = false;
+        resultRequestInFlight = false;
         showScreen('home-screen');
         loadRanking();
     }
@@ -521,6 +546,8 @@
     function retryGame() {
         stopAllIntervals();
         multiPointsAdded = false;
+        multiResultFinalized = false;
+        resultRequestInFlight = false;
         if (gameMode === 'single') {
             startSingleGame(difficulty);
         } else {
@@ -531,3 +558,4 @@
  
 </body>
 </html>
+ 
