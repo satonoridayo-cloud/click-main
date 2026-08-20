@@ -2,13 +2,28 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <!-- ズーム対策: ダブルタップ/ピンチでの拡大を無効化 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>オンラインクリックゲーム</title>
     <style>
+        html, body {
+            touch-action: manipulation; /* ダブルタップズームを抑止 */
+            -webkit-tap-highlight-color: transparent;
+        }
         body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; text-align: center; color: #333; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         h1 { color: #2c3e50; margin-bottom: 10px; }
-        .user-tag { background: #e1f5fe; color: #0288d1; padding: 6px 12px; border-radius: 20px; font-weight: bold; display: inline-block; margin-bottom: 20px; }
-        .btn { background: #3498db; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; margin: 10px; transition: 0.2s; }
+
+        .points-display { background: #fff8e1; color: #f39c12; font-size: 20px; font-weight: bold; padding: 10px 16px; border-radius: 10px; display: inline-block; margin-bottom: 14px; }
+        .points-display .label { font-size: 13px; color: #b9770e; font-weight: normal; display: block; }
+
+        .name-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+        .user-tag { background: #e1f5fe; color: #0288d1; padding: 6px 12px; border-radius: 20px; font-weight: bold; display: inline-block; }
+        .name-input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; width: 140px; }
+        .btn-small { background: #3498db; color: white; border: none; padding: 7px 14px; font-size: 13px; border-radius: 6px; cursor: pointer; }
+        .btn-small:hover { background: #2980b9; }
+
+        .btn { background: #3498db; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; margin: 10px; transition: 0.2s; touch-action: manipulation; }
         .btn:hover { background: #2980b9; }
         .btn-danger { background: #e74c3c; }
         .btn-danger:hover { background: #c0392b; }
@@ -17,7 +32,14 @@
         .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
         .screen { display: none; }
         .active { display: block; }
-        #click-target { width: 150px; height: 150px; background: #e74c3c; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; margin: 30px auto; cursor: pointer; user-select: none; box-shadow: 0 6px 0 #c0392b; transition: 0.05s; }
+        #click-target {
+            width: 150px; height: 150px; background: #e74c3c; color: white; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold;
+            margin: 30px auto; cursor: pointer; user-select: none;
+            box-shadow: 0 6px 0 #c0392b; transition: 0.05s;
+            touch-action: manipulation; /* ズーム対策 */
+            -webkit-user-select: none;
+        }
         #click-target:active { transform: translateY(4px); box-shadow: 0 2px 0 #c0392b; }
         .timer, .score { font-size: 22px; font-weight: bold; margin: 10px 0; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
@@ -26,6 +48,8 @@
         .waiting-note { color: #888; font-size: 14px; margin-top: 10px; }
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #ccc; border-top-color: #3498db; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 6px; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .hint { font-size: 12px; color: #999; margin-top: 6px; }
+        .vs-text { font-size: 26px; font-weight: bold; margin: 20px 0; color: #2c3e50; }
     </style>
 </head>
 <body>
@@ -34,8 +58,19 @@
     <!-- ホーム画面 -->
     <div id="home-screen" class="screen active">
         <h1>🔥 オンラインクリックゲーム 🔥</h1>
-        <div class="user-tag" id="display-username">名前: 読み込み中...</div>
+
+        <div class="points-display">
+            <span class="label">累計ポイント</span>
+            <span id="total-points">0</span> pt
+        </div>
         <br>
+
+        <div class="name-row">
+            <div class="user-tag" id="display-username">名前: 読み込み中...</div>
+            <input type="text" id="name-input" class="name-input" placeholder="新しい名前" maxlength="20">
+            <button class="btn-small" onclick="changeName()">名前を変更</button>
+        </div>
+
         <button class="btn" onclick="showScreen('single-menu-screen')">一人でプレイ (VS CPU)</button>
         <button class="btn" onclick="startMultiMatch()">二人でプレイ (オンライン)</button>
 
@@ -64,6 +99,15 @@
         <button class="btn btn-danger" onclick="cancelMatch()">キャンセル</button>
     </div>
 
+    <!-- 対戦確認画面 -->
+    <div id="confirm-screen" class="screen">
+        <h2>相手が見つかりました！</h2>
+        <div class="vs-text">VS <span id="confirm-opponent-name"></span></div>
+        <p>戦いますか？</p>
+        <button class="btn btn-success" onclick="acceptMatch()">戦う！</button>
+        <button class="btn btn-danger" onclick="declineMatch()">やめる</button>
+    </div>
+
     <!-- ゲームプレイ画面 -->
     <div id="game-screen" class="screen">
         <h2 id="game-title">ゲーム中</h2>
@@ -71,6 +115,7 @@
         <div class="score">あなた: <span id="current-score">0</span> pt</div>
         <div id="cpu-score-area" style="display:none;" class="score">CPU: <span id="current-cpu-score">0</span> pt</div>
         <div id="click-target" onclick="handleClick()">CLICK!</div>
+        <div class="hint">スペースキーでもクリックできます</div>
     </div>
 
     <!-- 結果画面 -->
@@ -95,7 +140,10 @@
     }
 
     let playerName = generateRandomName();
+    let totalPoints = 0;
+
     document.getElementById('display-username').textContent = `名前: ${playerName}`;
+    document.getElementById('total-points').textContent = totalPoints;
 
     let gameMode = "";
     let difficulty = "";
@@ -107,8 +155,31 @@
     let matchingInterval = null;
     let resultPollInterval = null;
     let opponentName = "";
-    let currentSessionId = null; // ★追加: マッチング成立時に受け取るセッションID
+    let currentSessionId = null;
 
+    // ============================================================
+    // 名前変更
+    // ============================================================
+    function changeName() {
+        const input = document.getElementById('name-input');
+        const newName = input.value.trim();
+        if (!newName) return;
+        playerName = newName;
+        document.getElementById('display-username').textContent = `名前: ${playerName}`;
+        input.value = '';
+    }
+
+    // ============================================================
+    // 累計ポイント
+    // ============================================================
+    function addPoints(amount) {
+        totalPoints += amount;
+        document.getElementById('total-points').textContent = totalPoints;
+    }
+
+    // ============================================================
+    // 画面切り替え
+    // ============================================================
     function showScreen(screenId) {
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         document.getElementById(screenId).classList.add('active');
@@ -135,6 +206,19 @@
 
     window.addEventListener('beforeunload', () => {
         navigator.sendBeacon(`${API_BASE}/api/match/cancel`, JSON.stringify({username: playerName}));
+    });
+
+    // ============================================================
+    // スペースキー対応
+    // ============================================================
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.key === ' ') {
+            const gameScreen = document.getElementById('game-screen');
+            if (gameScreen.classList.contains('active')) {
+                e.preventDefault(); // ページスクロール防止
+                handleClick();
+            }
+        }
     });
 
     function stopAllIntervals() {
@@ -179,6 +263,9 @@
         }, 100);
     }
 
+    // ============================================================
+    // マッチング
+    // ============================================================
     function startMultiMatch() {
         currentSessionId = null;
         opponentName = "";
@@ -198,8 +285,10 @@
                     clearInterval(matchingInterval);
                     matchingInterval = null;
                     opponentName = data.opponent;
-                    currentSessionId = data.session_id; // ★追加
-                    startMultiGame();
+                    currentSessionId = data.session_id;
+                    // ★いきなり開始せず「戦いますか？」確認画面を挟む
+                    document.getElementById('confirm-opponent-name').textContent = opponentName;
+                    showScreen('confirm-screen');
                 }
             })
             .catch(err => console.error("マッチング取得エラー:", err));
@@ -219,6 +308,24 @@
             console.error("キャンセルエラー:", err);
             showScreen('home-screen');
         });
+    }
+
+    // 確認画面: 「戦う」を選んだ場合
+    function acceptMatch() {
+        startMultiGame();
+    }
+
+    // 確認画面: 「やめる」を選んだ場合
+    function declineMatch() {
+        currentSessionId = null;
+        opponentName = "";
+        // 待機列に自分が残っていないよう念のためcancelしておく
+        fetch(`${API_BASE}/api/match/cancel`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: playerName})
+        }).catch(() => {});
+        showScreen('home-screen');
     }
 
     function startMultiGame() {
@@ -247,7 +354,6 @@
     }
 
     function endGame() {
-        // 1. まず確実にタイマーを止める
         clearInterval(timerInterval);
         if (cpuInterval) clearInterval(cpuInterval);
         timerInterval = null;
@@ -260,8 +366,8 @@
             let winLoseText = score > cpuScore ? "あなたの勝利！" : (score < cpuScore ? "CPUの勝利..." : "引き分け！");
             document.getElementById('result-text').textContent = `${winLoseText} (あなた: ${score}pt vs CPU: ${cpuScore}pt)`;
             showScreen('result-screen');
+            addPoints(score);
 
-            // サーバーへの保存は裏側でこっそり行う
             fetch(`${API_BASE}/api/single_result`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -270,7 +376,7 @@
 
         } else if (gameMode === 'multi') {
             document.getElementById('result-text').textContent = `あなたのスコア: ${score}pt。結果を送信中...`;
-            document.getElementById('retry-btn').disabled = true; // 結果確定までリトライ不可に
+            document.getElementById('retry-btn').disabled = true;
             showScreen('result-screen');
             submitMultiResult();
         }
@@ -302,9 +408,10 @@
         });
     }
 
+    let multiPointsAdded = false;
+
     function handleMultiResultResponse(data) {
         if (data.status === 'waiting_for_opponent') {
-            // 相手がまだ結果を送っていない → 数秒おきに再送してポーリングする
             document.getElementById('result-text').textContent = `あなたのスコア: ${score}pt`;
             document.getElementById('result-waiting-note').style.display = 'block';
             document.getElementById('retry-btn').disabled = true;
@@ -317,7 +424,6 @@
             return;
         }
 
-        // 結果確定 (status === 'finished') または エラー
         clearInterval(resultPollInterval);
         resultPollInterval = null;
         document.getElementById('result-waiting-note').style.display = 'none';
@@ -327,10 +433,14 @@
             let youWon = data.winner === playerName;
             let isDraw = data.winner === "引き分け";
             let resultLabel = isDraw ? "引き分け！" : (youWon ? "あなたの勝利！" : `${data.winner} の勝利...`);
+            let opponentPoints = data.player1_name === playerName ? data.player2_points : data.player1_points;
             document.getElementById('result-text').textContent =
-                `${resultLabel} (あなた: ${score}pt vs ${opponentName}: ${
-                    data.player1_name === playerName ? data.player2_points : data.player1_points
-                }pt)`;
+                `${resultLabel} (あなた: ${score}pt vs ${opponentName}: ${opponentPoints}pt)`;
+
+            if (!multiPointsAdded) {
+                addPoints(score);
+                multiPointsAdded = true;
+            }
             loadRanking();
         } else {
             document.getElementById('result-text').textContent =
@@ -341,12 +451,14 @@
     function goHomeFromResult() {
         stopAllIntervals();
         currentSessionId = null;
+        multiPointsAdded = false;
         showScreen('home-screen');
         loadRanking();
     }
 
     function retryGame() {
         stopAllIntervals();
+        multiPointsAdded = false;
         if (gameMode === 'single') {
             startSingleGame(difficulty);
         } else {
