@@ -135,11 +135,32 @@
     // ★ バックエンド(Flask)のURLを指定
     const API_BASE = "https://click-server-xnnb.onrender.com";
 
+    const NAME_STORAGE_KEY = 'clickgame_playerName';
+
     function generateRandomName() {
         return "Player_" + Math.floor(Math.random() * 9000 + 1000);
     }
 
-    let playerName = generateRandomName();
+    function loadStoredName() {
+        try {
+            const stored = localStorage.getItem(NAME_STORAGE_KEY);
+            if (stored && stored.trim()) return stored;
+        } catch (e) {
+            console.warn("localStorageが利用できません:", e);
+        }
+        return generateRandomName();
+    }
+
+    function saveNameToStorage(name) {
+        try {
+            localStorage.setItem(NAME_STORAGE_KEY, name);
+        } catch (e) {
+            console.warn("localStorageへの保存に失敗しました:", e);
+        }
+    }
+
+    let playerName = loadStoredName();
+    saveNameToStorage(playerName); // 初回生成した名前も次回のために保存しておく
     let totalPoints = 0;
 
     document.getElementById('display-username').textContent = `名前: ${playerName}`;
@@ -165,6 +186,7 @@
         const newName = input.value.trim();
         if (!newName) return;
         playerName = newName;
+        saveNameToStorage(playerName);
         document.getElementById('display-username').textContent = `名前: ${playerName}`;
         input.value = '';
     }
@@ -468,4 +490,4 @@
 </script>
 
 </body>
-</html>
+    </html>
