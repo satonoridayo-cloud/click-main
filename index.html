@@ -360,13 +360,18 @@
 
     // 確認画面: 「やめる」を選んだ場合
     function declineMatch() {
+        // session_id はリクエスト送信後にクリアする(先にnullにすると
+        // サーバー側にセッションを伝えられず、相手が待ち続けてしまう)
+        const sessionIdToCancel = currentSessionId;
         currentSessionId = null;
         opponentName = "";
-        // 待機列に自分が残っていないよう念のためcancelしておく
+        // session_idを渡すことで、サーバー側がそのセッションに
+        // cancelledフラグを立て、相手が結果送信時にすぐ
+        // 「相手が辞退しました」と分かるようにする
         fetch(`${API_BASE}/api/match/cancel`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username: playerName})
+            body: JSON.stringify({username: playerName, session_id: sessionIdToCancel})
         }).catch(() => {});
         showScreen('home-screen');
     }
@@ -477,6 +482,13 @@
         document.getElementById('result-waiting-note').style.display = 'none';
         document.getElementById('retry-btn').disabled = false;
 
+        if (data.status === 'opponent_declined') {
+            // 相手が対戦確認画面で「やめる」を押した場合
+            document.getElementById('result-text').textContent =
+                `${data.opponent || opponentName} が対戦をキャンセルしました。`;
+            return;
+        }
+
         if (data.status === 'finished') {
             let youWon = data.winner === playerName;
             let isDraw = data.winner === "引き分け";
@@ -484,7 +496,7 @@
             let opponentPoints = data.player1_name === playerName ? data.player2_points : data.player1_points;
             document.getElementById('result-text').textContent =
                 `${resultLabel} (あなた: ${score}pt vs ${opponentName}: ${opponentPoints}pt)`;
-
+ 
             if (!multiPointsAdded) {
                 if (youWon) {
                     addPoints(score); // 勝った時だけ累計ポイントに加算
