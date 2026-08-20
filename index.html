@@ -330,9 +330,24 @@
                     // ★いきなり開始せず「戦いますか？」確認画面を挟む
                     document.getElementById('confirm-opponent-name').textContent = opponentName;
                     showScreen('confirm-screen');
+                } else if (data.status === 'waiting') {
+                    document.getElementById('matching-status').innerHTML =
+                        `<span class="spinner"></span>${playerName} でオンライン行に登録中...`;
+                } else if (data.error) {
+                    // サーバー側のエラーを画面に出す(以前は無視されて
+                    // 無限にポーリングし続け「マッチングしない」ように
+                    // 見えるだけだったため)
+                    clearInterval(matchingInterval);
+                    matchingInterval = null;
+                    document.getElementById('matching-status').textContent =
+                        `マッチングでエラーが発生しました: ${data.error}`;
                 }
             })
-            .catch(err => console.error("マッチング取得エラー:", err));
+            .catch(err => {
+                console.error("マッチング取得エラー:", err);
+                document.getElementById('matching-status').textContent =
+                    `通信エラーが発生しました。ネットワーク状況を確認してください。`;
+            });
         }, 2000);
     }
 
@@ -482,12 +497,12 @@
         // すでに確定済みの結果を表示している場合、通信の時間差で
         // 後から届いた古いレスポンス(waiting_for_opponent等)は無視する
         if (multiResultFinalized) return;
-
+ 
         if (data.status === 'waiting_for_opponent') {
             document.getElementById('result-text').textContent = `あなたのスコア: ${score}pt`;
             document.getElementById('result-waiting-note').style.display = 'block';
             document.getElementById('retry-btn').disabled = true;
-
+ 
             if (!resultPollInterval) {
                 resultPollInterval = setInterval(() => {
                     submitMultiResult();
@@ -495,7 +510,7 @@
             }
             return;
         }
-
+ 
         // ここに来るのは finished / opponent_declined / エラー等、
         // 「これ以上ポーリングする必要がない」結果なので確定フラグを立てる
         multiResultFinalized = true;
@@ -558,4 +573,3 @@
  
 </body>
 </html>
- 
