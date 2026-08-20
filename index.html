@@ -385,10 +385,15 @@
         document.getElementById('retry-btn').disabled = false;
 
         if (gameMode === 'single') {
-            let winLoseText = score > cpuScore ? "あなたの勝利！" : (score < cpuScore ? "CPUの勝利..." : "引き分け！");
+            let isWin = score > cpuScore;
+            let isDraw = score === cpuScore;
+            let winLoseText = isWin ? "あなたの勝利！" : (isDraw ? "引き分け！" : "CPUの勝利...");
             document.getElementById('result-text').textContent = `${winLoseText} (あなた: ${score}pt vs CPU: ${cpuScore}pt)`;
             showScreen('result-screen');
-            addPoints(score);
+
+            if (isWin) {
+                addPoints(score); // 勝った時だけ累計ポイントに加算
+            }
 
             fetch(`${API_BASE}/api/single_result`, {
                 method: 'POST',
@@ -460,7 +465,9 @@
                 `${resultLabel} (あなた: ${score}pt vs ${opponentName}: ${opponentPoints}pt)`;
 
             if (!multiPointsAdded) {
-                addPoints(score);
+                if (youWon) {
+                    addPoints(score); // 勝った時だけ累計ポイントに加算
+                }
                 multiPointsAdded = true;
             }
             loadRanking();
@@ -490,4 +497,4 @@
 </script>
 
 </body>
-    </html>
+</html>
