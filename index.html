@@ -531,9 +531,17 @@
             let youWon = data.winner === playerName;
             let isDraw = data.winner === "引き分け";
             let resultLabel = isDraw ? "引き分け！" : (youWon ? "あなたの勝利！" : `${data.winner} の勝利...`);
-            let opponentPoints = data.player1_name === playerName ? data.player2_points : data.player1_points;
+ 
+            // 表示順は必ずサーバー側の player1 → player2 の固定順にする。
+            // (以前は「あなた」を必ず先頭に出していたため、見る人によって
+            //  数字の左右が入れ替わって見えてしまっていた)
+            let p1Label = data.player1_name === playerName
+                ? `${data.player1_name}(あなた)` : data.player1_name;
+            let p2Label = data.player2_name === playerName
+                ? `${data.player2_name}(あなた)` : data.player2_name;
+ 
             document.getElementById('result-text').textContent =
-                `${resultLabel} (あなた: ${score}pt vs ${opponentName}: ${opponentPoints}pt)`;
+                `${resultLabel} (${p1Label}: ${data.player1_points}pt vs ${p2Label}: ${data.player2_points}pt)`;
  
             if (!multiPointsAdded) {
                 if (youWon) {
@@ -573,4 +581,3 @@
  
 </body>
 </html>
- 
